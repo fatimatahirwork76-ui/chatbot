@@ -1,0 +1,79 @@
+import streamlit as st
+from dotenv import load_dotenv
+
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+load_dotenv()
+
+MODES = {
+    "😡 Angry": "You are an angry AI agent. You respond aggressively.",
+    "😂 Funny": "You are a very funny AI agent. You respond with humor.",
+    "😢 Sad": "You are a very sad AI agent. You respond in a sad, gloomy way.",
+    "🙂 Human": "You are a friendly, natural human being. Talk casually like a real person, with short and simple replies.",
+}
+
+st.set_page_config(page_title="AI Mode Chatbot", page_icon="🤖")
+
+
+def get_text(content):
+    """Response se sirf plain text nikalta hai."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts)
+    return str(content)
+
+
+@st.cache_resource
+def get_model():
+    return init_chat_model("google_genai:gemini-3.5-flash-lite")
+
+
+model = get_model()
+
+# ---------------- Sidebar ----------------
+st.sidebar.title("Choose your AI mode")
+mode_name = st.sidebar.radio("Mode", list(MODES.keys()), label_visibility="collapsed")
+
+# Mode badal jaye to chat naye sire se shuru
+if st.session_state.get("mode_name") != mode_name:
+    st.session_state.mode_name = mode_name
+    st.session_state.messages = [SystemMessage(content=MODES[mode_name])]
+
+if st.sidebar.button("🗑️ Clear chat", use_container_width=True):
+    st.session_state.messages = [SystemMessage(content=MODES[mode_name])]
+    st.rerun()
+
+# ---------------- Main chat ----------------
+st.title("🤖 AI Chatbot")
+st.caption(f"Current mode: {mode_name}")
+
+for msg in st.session_state.messages:
+    if isinstance(msg, HumanMessage):
+        with st.chat_message("user"):
+            st.write(msg.content)
+    elif isinstance(msg, AIMessage):
+        with st.chat_message("assistant"):
+            st.write(msg.content)
+
+prompt = st.chat_input("Type your message...")
+
+if prompt:
+    st.session_state.messages.append(HumanMessage(content=prompt))
+    with st.chat_message("user"):
+        st.write(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            response = model.invoke(st.session_state.messages)
+        reply = get_text(response.content)
+        st.write(reply)
+
+    st.session_state.messages.append(AIMessage(content=reply))
